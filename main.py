@@ -1,27 +1,8 @@
 import asyncio
-from email import message
 import socket
-from typing import Optional
-import selectors
-from pydantic import BaseModel, Field
+
 import json
-
-
-class Request(BaseModel):
-    name: str
-    to: str
-    action: str
-    message: Optional[str]
-
-
-class Response(BaseModel):
-    status: int
-    message: str
-
-class Message(BaseModel):
-    action: str
-    from_: str = Field(alias='from')
-    message: str
+from models import Message, Request, Response
 
 FD = {}
 
@@ -33,7 +14,6 @@ async def accept_connection():
         print('accept_connection')
         loop = asyncio.get_running_loop()
         client, addr = await loop.sock_accept(sock=server)
-        # loop.add_reader(client, receive, client, loop)
         await register_clent_socket(client, loop)
 
 
@@ -44,26 +24,20 @@ async def register_clent_socket(client: socket.socket, loop: asyncio.BaseEventLo
     assert request.action == 'presence', 'Bad request'
     
     fd = client.fileno()
-    FD[fd] = request.name
-    CONNECTED[request.name.lower()] = client
+    FD[fd] = request.user.login.lower()
+    CONNECTED[request.user.login.lower()] = client
     
-    print(f"User {request.name} is online")
-    send_response(client)
+    print(f"User {request.user.login} is online")
+    # send_response(client)
     loop.add_reader(client, receive, client, loop)
     
 
 def send_message(data: Request):
-    recipient = CONNECTED.get(data.to.lower(), None)
+    recipient = CONNECTED.get(data.to.login.lower(), None)
 
-    assert recipient, f'User {data.to} is offline'
-
-    mess = {
-        'action': 'inbox',
-        'from': data.name,
-        'message': data.message
-    }
+    assert recipient, f'User {data.to.login} is offline'
     
-    recipient.send(json.dumps(mess, ensure_ascii=False).encode('unicode-escape'))
+    recipient.send(data.json(exclude_none=True, ensure_ascii=False).encode('unicode-escape'))
 
 
 def get_method(action):
@@ -90,7 +64,7 @@ def receive(client: socket.socket, loop: asyncio.BaseEventLoop):
 
         handler(data)
 
-        send_response(client)
+        # send_response(client)
 
 
 def send_response(client: socket.socket):
