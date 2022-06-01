@@ -17,7 +17,8 @@ client.send(presence.json(ensure_ascii=False).encode('unicode-escape'))
 response = Response.parse_raw(client.recv(1024))
 if response.status == 200:
     print(response.json(indent=4))
-    while True:
+    act = input("whats next? ")
+    if act == 'send':
         mess = input('message: ')
         to = input('to: ')
         request = Request(
@@ -29,3 +30,6 @@ if response.status == 200:
         client.send(request.json(ensure_ascii=False).encode('unicode-escape'))
         response = Response.parse_raw(client.recv(1024))
         print(response.json(indent=4))
+    elif act == 'recv':
+        mess = client.recv(1024).decode('unicode-escape')
+        print(mess)

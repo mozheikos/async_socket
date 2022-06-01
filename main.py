@@ -1,8 +1,10 @@
 import asyncio
+from email import message
 import socket
 from typing import Optional
 import selectors
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+import json
 
 
 class Request(BaseModel):
@@ -16,6 +18,10 @@ class Response(BaseModel):
     status: int
     message: str
 
+class Message(BaseModel):
+    action: str
+    from_: str = Field(alias='from')
+    message: str
 
 FD = {}
 
@@ -34,23 +40,37 @@ async def accept_connection():
 async def register_clent_socket(client: socket.socket, loop: asyncio.BaseEventLoop):
     data = await loop.sock_recv(client, 1024)
     request = Request.parse_raw(data)
+
     assert request.action == 'presence', 'Bad request'
+    
     fd = client.fileno()
     FD[fd] = request.name
-    CONNECTED[request.name] = client
+    CONNECTED[request.name.lower()] = client
+    
     print(f"User {request.name} is online")
     send_response(client)
     loop.add_reader(client, receive, client, loop)
     
 
 def send_message(data: Request):
-    recipient = data.to
+    recipient = CONNECTED.get(data.to.lower(), None)
+
+    assert recipient, f'User {data.to} is offline'
+
+    mess = {
+        'action': 'inbox',
+        'from': data.name,
+        'message': data.message
+    }
+    
+    recipient.send(json.dumps(mess, ensure_ascii=False).encode('unicode-escape'))
 
 
-# def get_method(action):
-#     methods = {
-#         'msg': get_
-#     }
+def get_method(action):
+    methods = {
+        'msg': send_message
+    }
+    return methods.get(action, None)
 
 
 def receive(client: socket.socket, loop: asyncio.BaseEventLoop):
@@ -64,6 +84,12 @@ def receive(client: socket.socket, loop: asyncio.BaseEventLoop):
         
     else:
         data = Request.parse_raw(received)
+        handler = get_method(data.action)
+        
+        assert handler, 'Method not allowed'
+
+        handler(data)
+
         send_response(client)
 
 
